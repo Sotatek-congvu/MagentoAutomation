@@ -167,7 +167,4 @@ Nếu kiểm thử thất bại:
 4. **Tài khoản và dữ liệu**: Đảm bảo tài khoản `testuser@example.com` hợp lệ và trang có sản phẩm.
 
 ## Liên hệ
-Nếu cần hỗ trợ, vui lòng liên hệ qua GitHub Issues hoặc email của bạn.
-
----  
-**Lưu ý**: Đảm bảo tệp `README.md` được đặt trong thư mục gốc của repository. Nếu bạn cần thêm nội dung (như cách tạo tài khoản Magento, cấu hình ExtentReports), hãy yêu cầu cụ thể!
+Nếu cần hỗ trợ, vui lòng liên hệ qua GitHub Issues hoặc email congvanvu0000@gmail.com
