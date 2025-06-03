@@ -73,7 +73,7 @@ public class PurchaseSteps
     public void GivenIAmLoggedIn()
     {
 
-        _loginPage.Login("dkq92525@toaik.com", "dkq92525@toaik");
+        _loginPage.Login("mgp75456@jioso.com", "mgp75456@jioso");
         LogToFile("Logged in successfully");
     }
 

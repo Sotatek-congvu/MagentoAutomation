@@ -29,17 +29,14 @@ public class ProductPage
             var productItem = _driver.FindElement(ProductItem(i));
             var addToCartButton = productItem.FindElement(AddToCartButton);
 
-            // Cuộn đến product-item
             ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", productItem);
 
-            // Hover để hiển thị nút Add to Cart và tùy chọn
             var actions = new Actions(_driver);
             actions.MoveToElement(productItem).Perform();
-            Thread.Sleep(1000); // Đợi 1 giây để các tùy chọn hiển thị
+            Thread.Sleep(1000);
             _wait.Until(d => productItem.FindElement(AddToCartButton).Displayed);
             Console.WriteLine($"Add to Cart button displayed for product {i + 1}: {addToCartButton.Displayed}, enabled: {addToCartButton.Enabled}");
 
-            // Xử lý panel bộ lọc
             var filterToggle = _driver.FindElements(By.CssSelector(".filter-options-title"));
             if (filterToggle.Any() && filterToggle.First().Displayed)
             {
@@ -54,7 +51,6 @@ public class ProductPage
                 }
             }
 
-            // Kiểm tra và chọn kích thước
             try
             {
                 var sizeOptions = productItem.FindElements(SizeOption);
@@ -93,7 +89,6 @@ public class ProductPage
                 continue;
             }
 
-            // Chọn màu
             try
             {
                 var colorOption = productItem.FindElement(ColorOption);
@@ -120,7 +115,6 @@ public class ProductPage
                 continue;
             }
 
-            // Nhấp nút Add to Cart với hover
             try
             {
                 actions.MoveToElement(productItem).Click(addToCartButton).Build().Perform();
@@ -144,7 +138,6 @@ public class ProductPage
                 ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", addToCartButton);
             }
 
-            // Đóng mini-cart nếu hiển thị
             var miniCart = _driver.FindElements(By.CssSelector(".minicart-wrapper.active"));
             if (miniCart.Any() && miniCart.First().Displayed)
             {
@@ -152,7 +145,6 @@ public class ProductPage
                 _wait.Until(ExpectedConditions.InvisibilityOfElementLocated(By.CssSelector(".minicart-wrapper.active")));
             }
 
-            // Đợi thông báo thành công
             try
             {
                 _wait.Until(d => d.FindElement(By.CssSelector(".message-success")).Displayed);
@@ -162,7 +154,6 @@ public class ProductPage
                 Console.WriteLine($"Success message not found for product {i + 1}, checking cart state.");
             }
 
-            // Đợi trang ổn định trước khi tiếp tục
             _wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").Equals("complete"));
         }
     }

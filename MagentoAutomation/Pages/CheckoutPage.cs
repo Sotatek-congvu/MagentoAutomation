@@ -99,108 +99,207 @@ public class CheckoutPage
 
         _wait.Until(d => ((IJavaScriptExecutor)_driver).ExecuteScript("return document.readyState").Equals("complete"));
 
-        var modals = _driver.FindElements(By.CssSelector(".modal-popup, .loading-mask, .minicart-wrapper.active"));
-        foreach (var modal in modals)
+        // Xử lý modals một cách an toàn với try-catch
+        try
         {
-            if (modal.Displayed)
+            var modals = _driver.FindElements(By.CssSelector(".modal-popup, .loading-mask, .minicart-wrapper.active"));
+            foreach (var modal in modals)
             {
                 try
                 {
-                    _driver.FindElement(By.CssSelector(".action.close")).Click();
-                    _wait.Until(ExpectedConditions.InvisibilityOfElementLocated(By.CssSelector(".modal-popup, .loading-mask, .minicart-wrapper.active")));
+                    if (modal.Displayed)
+                    {
+                        var closeButton = _driver.FindElement(By.CssSelector(".action.close"));
+                        if (closeButton != null && closeButton.Displayed)
+                        {
+                            closeButton.Click();
+                            _wait.Until(ExpectedConditions.InvisibilityOfElementLocated(By.CssSelector(".modal-popup, .loading-mask, .minicart-wrapper.active")));
+                        }
+                    }
                 }
-                catch (NoSuchElementException) { }
-            }
-        }
-
-        var overlays = _driver.FindElements(By.CssSelector(".checkout-billing-address, .modal-popup, .loading-mask, .minicart-wrapper.active"));
-        foreach (var overlay in overlays)
-        {
-            if (overlay.Displayed)
-            {
-                ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].style.display = 'none';", overlay);
-            }
-        }
-
-        try
-        {
-            var paymentMethod = _driver.FindElements(By.CssSelector("input[name='payment[method]']"));
-            if (paymentMethod.Any() && !paymentMethod.First().Selected)
-            {
-                paymentMethod.First().Click();
-                _wait.Until(ExpectedConditions.ElementToBeSelected(By.CssSelector("input[name='payment[method]']")));
-                Thread.Sleep(1500); // Đợi DOM ổn định lâu hơn
-
-                int retryCount = 0;
-                const int maxRetries = 5; // Tăng số lần thử
-                while (retryCount < maxRetries)
+                catch (StaleElementReferenceException)
                 {
-                    try
-                    {
-                        var applyButton = _driver.FindElements(By.CssSelector(".payment-method-content .action.primary"));
-                        if (applyButton.Any())
-                        {
-                            applyButton.First().Click();
-                            _wait.Until(ExpectedConditions.ElementToBeClickable(placeOrderButton));
-                            break;
-                        }
-                        else
-                        {
-                            Console.WriteLine("No Apply button found, proceeding to Place Order.");
-                            break;
-                        }
-                    }
-                    catch (StaleElementReferenceException)
-                    {
-                        Console.WriteLine($"Stale element detected for applyButton, retrying ({retryCount + 1}/{maxRetries}).");
-                        retryCount++;
-                        Thread.Sleep(1000);
-                        if (retryCount == maxRetries) throw;
-                    }
+                    Console.WriteLine("Modal element became stale, continuing execution");
+                }
+                catch (NoSuchElementException)
+                {
+                    // Không tìm thấy nút đóng, bỏ qua
                 }
             }
         }
-        catch (NoSuchElementException ex)
+        catch (Exception ex)
         {
-            Console.WriteLine($"Payment method not found: {ex.Message}");
+            Console.WriteLine($"Error handling modals: {ex.Message}");
         }
 
-        // Nhấp nút Place Order
+        // Tìm kiếm và ẩn overlays bằng JavaScript một cách an toàn
         try
         {
-            var placeOrderButton = _driver.FindElement(this.placeOrderButton);
-            ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", placeOrderButton);
-            Thread.Sleep(500);
-            _wait.Until(ExpectedConditions.ElementToBeClickable(this.placeOrderButton));
-            _wait.Until(d => placeOrderButton.Enabled);
-            placeOrderButton.Click();
-            _wait.Until(d => d.Url.Contains("checkout/onepage/success"));
+            var overlaySelectors = new[] {
+            ".checkout-billing-address",
+            ".modal-popup",
+            ".loading-mask",
+            ".minicart-wrapper.active"
+        };
+
+            foreach (var selector in overlaySelectors)
+            {
+                try
+                {
+                    ((IJavaScriptExecutor)_driver).ExecuteScript(@"
+                    var elements = document.querySelectorAll(arguments[0]);
+                    for (var i = 0; i < elements.length; i++) {
+                        if (elements[i].offsetParent !== null) {
+                            elements[i].style.display = 'none';
+                        }
+                    }
+                ", selector);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error handling overlay {selector}: {ex.Message}");
+                }
+            }
         }
-        catch (ElementClickInterceptedException)
+        catch (Exception ex)
         {
-            Console.WriteLine("Click intercepted, using JavaScript to click.");
-            var placeOrderButton = _driver.FindElement(this.placeOrderButton);
-            ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", placeOrderButton);
-            _wait.Until(d => d.Url.Contains("checkout/onepage/success"));
+            Console.WriteLine($"Error handling overlays: {ex.Message}");
+        }
+
+        try
+        {
+            _wait.Until(d => ((IJavaScriptExecutor)_driver).ExecuteScript("return document.readyState").Equals("complete"));
+
+            var paymentMethods = _driver.FindElements(By.CssSelector("input[name='payment[method]']"));
+            if (paymentMethods.Any())
+            {
+                // Sử dụng JavaScript để chọn phương thức thanh toán đầu tiên
+                ((IJavaScriptExecutor)_driver).ExecuteScript(
+                    "arguments[0].click(); arguments[0].checked = true;",
+                    paymentMethods.First());
+
+                Thread.Sleep(2000); // Đợi để trang phản hồi
+
+                // Tìm và click nút Apply nếu có
+                var applyButtons = _driver.FindElements(By.CssSelector(".payment-method-content .action.primary"));
+                if (applyButtons.Any() && applyButtons.First().Displayed && applyButtons.First().Enabled)
+                {
+                    ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", applyButtons.First());
+                    Thread.Sleep(1000);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error selecting payment method: {ex.Message}");
+        }
+
+        // Sửa phần này để xử lý vấn đề stale element khi chuyển trang
+        try
+        {
+            // Sử dụng JavaScript để kiểm tra và click nút đặt hàng trực tiếp
+            // mà không lưu trữ tham chiếu đến element
+            bool clickSuccess = (bool)((IJavaScriptExecutor)_driver).ExecuteScript(@"
+            try {
+                // Tìm nút đặt hàng
+                let placeOrderButton = document.querySelector('.action.primary.checkout');
+                if (placeOrderButton && placeOrderButton.offsetParent !== null) {
+                    // Scroll đến nút
+                    placeOrderButton.scrollIntoView({block: 'center'});
+                    
+                    // Chờ một chút để trang hiển thị nút
+                    setTimeout(function() {}, 500);
+                    
+                    // Click vào nút
+                    placeOrderButton.click();
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                console.error('Error clicking button:', e);
+                return false;
+            }
+        ");
+
+            if (!clickSuccess)
+            {
+                Console.WriteLine("JavaScript click failed, trying WebDriver click");
+
+                // Tìm nút đặt hàng và click bằng WebDriver
+                var orderButton = _driver.FindElement(placeOrderButton);
+                _wait.Until(ExpectedConditions.ElementToBeClickable(placeOrderButton));
+                orderButton.Click();
+            }
+
+            // Chụp ảnh màn hình để theo dõi
+            var attemptScreenshot = ((ITakesScreenshot)_driver).GetScreenshot();
+            attemptScreenshot.SaveAsFile("place-order-attempt.png");
+
+            // Chờ chuyển hướng đến trang thành công
+            // Sử dụng chờ với timeout ngắn và thử lại nếu cần
+            bool redirectSuccess = false;
+            int attempts = 0;
+            while (!redirectSuccess && attempts < 3)
+            {
+                try
+                {
+                    _wait.Until(d => d.Url.Contains("checkout/onepage/success"));
+                    redirectSuccess = true;
+                }
+                catch (WebDriverTimeoutException)
+                {
+                    attempts++;
+                    if (attempts >= 3)
+                    {
+                        throw;
+                    }
+                    Thread.Sleep(1000);
+                }
+            }
         }
         catch (WebDriverTimeoutException)
         {
-            Console.WriteLine("Page did not navigate to success, checking for error modals.");
-            var errorModals = _driver.FindElements(By.CssSelector(".modal.alert, .message-error"));
-            if (errorModals.Any() && errorModals.First().Displayed)
+            Console.WriteLine("Timeout waiting for success page, checking for errors");
+
+            var debugScreenshot = ((ITakesScreenshot)_driver).GetScreenshot();
+            debugScreenshot.SaveAsFile($"order-failure-{DateTime.Now:yyyyMMdd_HHmmss}.png");
+
+            // Kiểm tra nếu đã chuyển hướng thành công nhưng timeout xảy ra
+            if (_driver.Url.Contains("checkout/onepage/success"))
             {
-                throw new Exception($"Order failed: {errorModals.First().Text}");
+                Console.WriteLine("Success page URL detected despite timeout");
             }
-            throw new Exception("Order placement failed, no success page loaded.");
+            else
+            {
+                // Kiểm tra lỗi
+                var errorModals = _driver.FindElements(By.CssSelector(".modal-content, .message-error"));
+                if (errorModals.Any())
+                {
+                    throw new Exception($"Order failed: {errorModals.First().Text}");
+                }
+                throw new Exception("Order placement failed, no success page loaded.");
+            }
         }
 
-        _wait.Until(d => d.FindElement(successMessage).Displayed);
+        // Xác nhận đặt hàng thành công
+        try
+        {
+            _wait.Until(ExpectedConditions.ElementExists(successMessage));
+            _wait.Until(d => d.FindElement(successMessage).Displayed);
 
-        string pageTitle = _driver.FindElement(successMessage).Text;
-        Assert.That(pageTitle, Does.Contain("Thank you"), "Order success message not found");
+            string pageTitle = _driver.FindElement(successMessage).Text;
+            Assert.That(pageTitle, Does.Contain("Thank you"), "Order success message not found");
 
-        var screenshot = ((ITakesScreenshot)_driver).GetScreenshot();
-        screenshot.SaveAsFile("order-success.png");
+            var screenshot = ((ITakesScreenshot)_driver).GetScreenshot();
+            screenshot.SaveAsFile("order-success.png");
+
+            Console.WriteLine("Order placed successfully, confirmation message found");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error verifying success message: {ex.Message}");
+            throw;
+        }
     }
 
 }
