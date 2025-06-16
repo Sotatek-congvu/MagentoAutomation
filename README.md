@@ -1,4 +1,3 @@
-Chắc chắn rồi\! Dưới đây là phiên bản README được cấu trúc lại và trình bày đẹp mắt hơn, sử dụng các yếu tố Markdown để tăng tính rõ ràng và chuyên nghiệp.
 
 -----
 
