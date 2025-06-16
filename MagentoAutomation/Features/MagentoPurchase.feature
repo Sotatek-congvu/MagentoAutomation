@@ -5,7 +5,8 @@ Feature: Magento Purchase
 
 Scenario: Purchase multiple products and verify order
   Given I am logged in as a registered user
-  When I add 2 jackets and 1 pants to the cart
+  When I add 2 jackets to the cart
+  And I add 1 pants to the cart
   And I proceed to checkout
   Then I verify the order summary
   When I enter a valid delivery address

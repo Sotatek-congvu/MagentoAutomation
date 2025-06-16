@@ -2,159 +2,758 @@
 using OpenQA.Selenium.Interactions;
 using OpenQA.Selenium.Support.UI;
 using SeleniumExtras.WaitHelpers;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 
 public class ProductPage
 {
     private readonly IWebDriver _driver;
     private readonly WebDriverWait _wait;
 
-    public ProductPage(IWebDriver driver)
-    {
-        _driver = driver;
-        _wait = new WebDriverWait(driver, TimeSpan.FromSeconds(20));
-    }
+    // Thời gian chờ chung
+    private readonly int _standardWait = 1000;
+    private readonly int _longWait = 2000;
 
+    // URL các trang sản phẩm
+    private readonly Dictionary<string, string> _productUrls = new Dictionary<string, string> {
+        { "jackets", "https://magento.softwaretestingboard.com/men/tops-men/jackets-men.html" },
+        { "pants", "https://magento.softwaretestingboard.com/men/bottoms-men/pants-men.html" }
+    };
+
+    // Selectors cho các thành phần
     private By ProductItem(int index) => By.CssSelector($".product-item:nth-child({index + 1})");
+    private By AllProducts => By.CssSelector(".product-item");
     private By SizeOption => By.CssSelector(".swatch-attribute.size .swatch-option:first-child");
     private By ColorOption => By.CssSelector(".swatch-attribute.color .swatch-option:first-child");
     private By AddToCartButton => By.CssSelector(".action.tocart.primary");
+    private By FilterToggle => By.CssSelector(".filter-options-title");
+    private By FilterContent => By.CssSelector("div.filter-options-content");
+    private By MiniCart => By.CssSelector(".minicart-wrapper.active");
+    private By CloseButton => By.CssSelector(".action.close");
+    private By SuccessMessage => By.CssSelector(".message-success");
+    private By PopupCloseButton => By.CssSelector(".modal-popup .action-close, .action-dismiss, .modals-overlay");
+    private By CartCounter => By.CssSelector(".counter.qty");
 
+    public ProductPage(IWebDriver driver)
+    {
+        _driver = driver;
+        _wait = new WebDriverWait(driver, TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>
+    /// Thêm áo khoác vào giỏ hàng
+    /// </summary>
+    /// <param name="quantity">Số lượng áo khoác cần thêm</param>
     public void AddJacketsToCart(int quantity)
     {
-        _driver.Navigate().GoToUrl("https://magento.softwaretestingboard.com/men/tops-men/jackets-men.html");
-        _wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").Equals("complete"));
+        AddProductToCart("jackets", quantity);
+    }
 
-        for (int i = 0; i < quantity; i++)
+    /// <summary>
+    /// Thêm quần vào giỏ hàng
+    /// </summary>
+    /// <param name="quantity">Số lượng quần cần thêm</param>
+    public void AddPantsToCart(int quantity)
+    {
+        AddProductToCart("pants", quantity);
+    }
+
+    /// <summary>
+    /// Phương thức chung để thêm sản phẩm vào giỏ hàng
+    /// </summary>
+    /// <param name="productType">Loại sản phẩm ("jackets" hoặc "pants")</param>
+    /// <param name="quantity">Số lượng sản phẩm cần thêm</param>
+    private void AddProductToCart(string productType, int quantity)
+    {
+        Console.WriteLine($"Starting Add{char.ToUpper(productType[0])}{productType.Substring(1)}ToCart method...");
+
+        CloseAllOverlays();
+
+        // Điều hướng đến trang sản phẩm thích hợp
+        if (!_productUrls.TryGetValue(productType.ToLower(), out string url))
         {
-            var productItem = _driver.FindElement(ProductItem(i));
-            var addToCartButton = productItem.FindElement(AddToCartButton);
+            throw new ArgumentException($"Không hỗ trợ loại sản phẩm: {productType}");
+        }
 
-            ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", productItem);
+        NavigateToProductPage(url);
 
-            var actions = new Actions(_driver);
-            actions.MoveToElement(productItem).Perform();
-            Thread.Sleep(1000);
-            _wait.Until(d => productItem.FindElement(AddToCartButton).Displayed);
-            Console.WriteLine($"Add to Cart button displayed for product {i + 1}: {addToCartButton.Displayed}, enabled: {addToCartButton.Enabled}");
+        // Thêm debug log
+        LogPageState();
 
-            var filterToggle = _driver.FindElements(By.CssSelector(".filter-options-title"));
-            if (filterToggle.Any() && filterToggle.First().Displayed)
+        // Tìm tất cả sản phẩm trên trang
+        var allProducts = FindAllProducts();
+
+        // Thêm các sản phẩm vào giỏ hàng theo số lượng yêu cầu
+        AddProductsToCart(allProducts, quantity, productType);
+
+        Console.WriteLine($"Add{char.ToUpper(productType[0])}{productType.Substring(1)}ToCart method completed");
+    }
+
+    /// <summary>
+    /// Điều hướng đến trang sản phẩm
+    /// </summary>
+    /// <param name="url">URL của trang sản phẩm</param>
+    private void NavigateToProductPage(string url)
+    {
+        _driver.Navigate().GoToUrl(url);
+        WaitForPageLoad();
+        Thread.Sleep(_longWait); // Đợi thêm để trang tải hoàn toàn
+
+        // Đóng các thông báo hoặc popup khi trang vừa load
+        CloseAllOverlays();
+    }
+
+    /// <summary>
+    /// Tìm tất cả sản phẩm trên trang và xử lý khi không tìm thấy
+    /// </summary>
+    /// <returns>Danh sách các phần tử sản phẩm</returns>
+    private IList<IWebElement> FindAllProducts()
+    {
+        var products = _driver.FindElements(AllProducts);
+        Console.WriteLine($"Found {products.Count} products on page");
+
+        // Nếu không tìm thấy sản phẩm nào, thử tải lại trang
+        if (products.Count == 0)
+        {
+            Console.WriteLine("No products found, refreshing page");
+            _driver.Navigate().Refresh();
+            WaitForPageLoad();
+            Thread.Sleep(_longWait);
+            products = _driver.FindElements(AllProducts);
+            Console.WriteLine($"After refresh: Found {products.Count} products");
+
+            // Nếu vẫn không tìm thấy sản phẩm nào, chụp màn hình để debug
+            if (products.Count == 0)
             {
-                filterToggle.First().Click();
+                TakeScreenshot("no_products_found");
+                throw new NoSuchElementException("Không tìm thấy sản phẩm nào trên trang sau khi tải lại.");
+            }
+        }
+
+        return products;
+    }
+
+    /// <summary>
+    /// Thêm sản phẩm vào giỏ hàng
+    /// </summary>
+    /// <param name="products">Danh sách sản phẩm tìm thấy</param>
+    /// <param name="quantity">Số lượng cần thêm</param>
+    /// <param name="productType">Loại sản phẩm để xác định URL khi cần tải lại</param>
+    private void AddProductsToCart(IList<IWebElement> products, int quantity, string productType)
+    {
+        string productUrl = _productUrls[productType];
+        int successCount = 0;
+
+        for (int i = 0; i < quantity && i < products.Count; i++)
+        {
+            Console.WriteLine($"Processing product {i + 1}");
+            bool added = false;
+
+            try
+            {
+                // Lưu trữ số lượng giỏ hàng trước khi thêm
+                int beforeCount = GetCartCount();
+
+                // Tìm sản phẩm theo index
+                var productItem = _driver.FindElement(ProductItem(i));
+
+                // Cuộn đến sản phẩm và đóng overlay
+                ScrollToElement(productItem);
+                CloseAllOverlays();
+
+                // Đóng filter panel nếu hiển thị
+                CloseFilterPanel();
+
+                // Hover lên sản phẩm để hiển thị nút "Add to Cart"
+                HoverOverProduct(productItem);
+
+                // Tìm và nhấp vào các tùy chọn sản phẩm (size, color)
+                if (!SelectProductOptions(productItem))
+                {
+                    Console.WriteLine($"Skipping product {i + 1} due to inability to select options");
+                    continue;
+                }
+
+                // Tìm và nhấp vào nút "Add to Cart"
+                if (!ClickAddToCartButton(productItem))
+                {
+                    Console.WriteLine($"Skipping product {i + 1} due to inability to click Add to Cart");
+                    continue;
+                }
+
+                // Kiểm tra xác nhận thành công
+                added = VerifyProductAdded(beforeCount);
+
+                // Đóng mini cart nếu hiển thị
+                CloseMiniCart();
+
+                // Đảm bảo trang ổn định trước khi tiếp tục
+                WaitForPageLoad();
+                Thread.Sleep(_standardWait);
+
+                if (added)
+                {
+                    successCount++;
+                }
+            }
+            catch (StaleElementReferenceException)
+            {
+                Console.WriteLine($"Stale element detected while processing product {i + 1}, recreating reference.");
+
+                // Kiểm tra xem có bị chuyển hướng không
+                if (!IsOnProductPage(productUrl))
+                {
+                    Console.WriteLine("Unexpected navigation detected, returning to product page.");
+                    NavigateToProductPage(productUrl);
+                }
+
+                // Thử lại với sản phẩm này
+                i--;
+                continue;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error processing product {i + 1}: {ex.Message}");
+                TakeScreenshot($"error_product_{i + 1}");
+            }
+        }
+
+        Console.WriteLine($"Successfully added {successCount} out of {quantity} requested {productType} to cart");
+    }
+
+    /// <summary>
+    /// Đóng tất cả các overlay (popup, thông báo, mini cart)
+    /// </summary>
+    private void CloseAllOverlays()
+    {
+        try
+        {
+            // Đóng các popup
+            var popups = _driver.FindElements(PopupCloseButton);
+            foreach (var popup in popups)
+            {
                 try
                 {
-                    _wait.Until(ExpectedConditions.InvisibilityOfElementLocated(By.CssSelector("div.filter-options-content")));
+                    if (popup.Displayed && popup.Enabled)
+                    {
+                        popup.Click();
+                        Thread.Sleep(_standardWait / 2);
+                        Console.WriteLine("Closed popup");
+                    }
+                }
+                catch (Exception) { }
+            }
+
+            // Đóng mini cart
+            CloseMiniCart();
+
+            // Đóng thông báo thành công
+            var successMessages = _driver.FindElements(SuccessMessage);
+            foreach (var message in successMessages)
+            {
+                try
+                {
+                    if (message.Displayed)
+                    {
+                        ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].style.display = 'none';", message);
+                    }
+                }
+                catch (Exception) { }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error closing overlays: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Đóng mini cart nếu hiển thị
+    /// </summary>
+    private void CloseMiniCart()
+    {
+        try
+        {
+            var miniCarts = _driver.FindElements(MiniCart);
+            if (miniCarts.Any())
+            {
+                var miniCart = miniCarts.First();
+                if (miniCart.Displayed)
+                {
+                    var closeButtons = _driver.FindElements(CloseButton);
+                    foreach (var closeButton in closeButtons)
+                    {
+                        if (closeButton.Displayed && closeButton.Enabled)
+                        {
+                            try
+                            {
+                                closeButton.Click();
+                                _wait.Until(ExpectedConditions.InvisibilityOfElementLocated(MiniCart));
+                                Console.WriteLine("Closed mini cart");
+                                break;
+                            }
+                            catch (Exception) { }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error closing mini cart: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Đóng panel lọc nếu hiển thị
+    /// </summary>
+    private void CloseFilterPanel()
+    {
+        try
+        {
+            var filterToggles = _driver.FindElements(FilterToggle);
+            if (filterToggles.Any() && filterToggles.First().Displayed)
+            {
+                filterToggles.First().Click();
+                try
+                {
+                    _wait.Until(ExpectedConditions.InvisibilityOfElementLocated(FilterContent));
                 }
                 catch (WebDriverTimeoutException)
                 {
                     Console.WriteLine("Filter panel did not collapse, proceeding anyway.");
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error closing filter panel: {ex.Message}");
+        }
+    }
 
+    /// <summary>
+    /// Cuộn đến một phần tử để nó hiển thị trong viewport
+    /// </summary>
+    /// <param name="element">Phần tử cần cuộn đến</param>
+    private void ScrollToElement(IWebElement element)
+    {
+        try
+        {
+            ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", element);
+            Thread.Sleep(_standardWait);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error scrolling to element: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Di chuột đến sản phẩm để hiển thị nút và các tùy chọn
+    /// </summary>
+    /// <param name="productItem">Phần tử sản phẩm</param>
+    private void HoverOverProduct(IWebElement productItem)
+    {
+        try
+        {
+            // Phương pháp 1: Sử dụng Actions API
+            new Actions(_driver).MoveToElement(productItem).Perform();
+            Thread.Sleep(_standardWait);
+
+            // Phương pháp 2: Sử dụng JavaScript (phòng trường hợp Actions không hoạt động)
+            ((IJavaScriptExecutor)_driver).ExecuteScript(
+                "var event = new MouseEvent('mouseover', {" +
+                "  bubbles: true," +
+                "  cancelable: true" +
+                "});" +
+                "arguments[0].dispatchEvent(event);", productItem);
+            Thread.Sleep(_standardWait);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error hovering over product: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Chọn các tùy chọn cho sản phẩm (kích thước, màu sắc)
+    /// </summary>
+    /// <param name="productItem">Phần tử sản phẩm</param>
+    /// <returns>true nếu thành công, false nếu thất bại</returns>
+    private bool SelectProductOptions(IWebElement productItem)
+    {
+        // Chọn kích thước
+        try
+        {
+            var sizeOptions = productItem.FindElements(SizeOption);
+            if (!sizeOptions.Any())
+            {
+                Console.WriteLine("No size options found");
+                return false;
+            }
+
+            var sizeOption = sizeOptions.First();
+            ScrollToElement(sizeOption);
+
+            // Thử cả hai cách click thông thường và JavaScript
             try
             {
-                var sizeOptions = productItem.FindElements(SizeOption);
-                if (!sizeOptions.Any())
-                {
-                    Console.WriteLine($"No size options for product {i + 1}, skipping.");
-                    continue;
-                }
-                var sizeOption = sizeOptions.First();
-                _wait.Until(d => sizeOption.Displayed);
+                _wait.Until(ExpectedConditions.ElementToBeClickable(sizeOption));
                 sizeOption.Click();
             }
-            catch (StaleElementReferenceException)
+            catch (Exception)
             {
-                Console.WriteLine($"Stale element detected for product {i + 1}, refreshing reference.");
-                if (!_driver.Url.Contains("jackets-men.html"))
-                {
-                    Console.WriteLine("Unexpected navigation detected, returning to product list.");
-                    _driver.Navigate().GoToUrl("https://magento.softwaretestingboard.com/men/tops-men/jackets-men.html");
-                    _wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").Equals("complete"));
-                }
-                productItem = _driver.FindElement(ProductItem(i));
-                var sizeOptions = productItem.FindElements(SizeOption);
-                if (!sizeOptions.Any())
-                {
-                    Console.WriteLine($"No size options for product {i + 1}, skipping.");
-                    continue;
-                }
-                var sizeOption = sizeOptions.First();
-                _wait.Until(d => sizeOption.Displayed);
-                sizeOption.Click();
-            }
-            catch (NoSuchElementException ex)
-            {
-                Console.WriteLine($"Size option not found for product {i + 1}: {ex.Message}");
-                continue;
+                ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", sizeOption);
             }
 
-            try
+            Console.WriteLine("Size option selected");
+            Thread.Sleep(_standardWait);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error selecting size: {ex.Message}");
+            return false;
+        }
+
+        // Chọn màu sắc
+        try
+        {
+            var colorOptions = productItem.FindElements(ColorOption);
+            if (!colorOptions.Any())
             {
-                var colorOption = productItem.FindElement(ColorOption);
-                _wait.Until(d => colorOption.Displayed);
-                colorOption.Click();
-            }
-            catch (StaleElementReferenceException)
-            {
-                Console.WriteLine($"Stale element detected for color option in product {i + 1}, refreshing reference.");
-                if (!_driver.Url.Contains("jackets-men.html"))
-                {
-                    Console.WriteLine("Unexpected navigation detected, returning to product list.");
-                    _driver.Navigate().GoToUrl("https://magento.softwaretestingboard.com/men/tops-men/jackets-men.html");
-                    _wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").Equals("complete"));
-                }
-                productItem = _driver.FindElement(ProductItem(i));
-                var colorOption = productItem.FindElement(ColorOption);
-                _wait.Until(d => colorOption.Displayed);
-                colorOption.Click();
-            }
-            catch (NoSuchElementException ex)
-            {
-                Console.WriteLine($"Color option not found for product {i + 1}: {ex.Message}");
-                continue;
+                Console.WriteLine("No color options found");
+                return false;
             }
 
+            var colorOption = colorOptions.First();
+            ScrollToElement(colorOption);
+
+            // Thử cả hai cách click thông thường và JavaScript
             try
             {
-                actions.MoveToElement(productItem).Click(addToCartButton).Build().Perform();
+                _wait.Until(ExpectedConditions.ElementToBeClickable(colorOption));
+                colorOption.Click();
             }
-            catch (StaleElementReferenceException)
+            catch (Exception)
             {
-                Console.WriteLine($"Stale element detected for add to cart button in product {i + 1}, refreshing reference.");
-                if (!_driver.Url.Contains("jackets-men.html"))
-                {
-                    Console.WriteLine("Unexpected navigation detected, returning to product list.");
-                    _driver.Navigate().GoToUrl("https://magento.softwaretestingboard.com/men/tops-men/jackets-men.html");
-                    _wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").Equals("complete"));
-                }
-                productItem = _driver.FindElement(ProductItem(i));
+                ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", colorOption);
+            }
+
+            Console.WriteLine("Color option selected");
+            Thread.Sleep(_standardWait);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error selecting color: {ex.Message}");
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Nhấp vào nút "Add to Cart"
+    /// </summary>
+    /// <param name="productItem">Phần tử sản phẩm</param>
+    /// <returns>true nếu thành công, false nếu thất bại</returns>
+    private bool ClickAddToCartButton(IWebElement productItem)
+    {
+        try
+        {
+            // Tìm lại nút "Add to Cart" sau khi chọn tùy chọn
+            IWebElement addToCartButton;
+            try
+            {
+                addToCartButton = _wait.Until(ExpectedConditions.ElementToBeClickable(
+                    productItem.FindElement(AddToCartButton)));
+            }
+            catch (Exception)
+            {
+                // Nếu không tìm thấy nút, thử làm hiển thị nó bằng JavaScript
+                ((IJavaScriptExecutor)_driver).ExecuteScript(
+                    "if (arguments[0].querySelector('.actions-primary')) { " +
+                    "  arguments[0].querySelector('.actions-primary').style.visibility = 'visible'; " +
+                    "  arguments[0].querySelector('.actions-primary').style.display = 'block'; " +
+                    "}",
+                    productItem);
+                Thread.Sleep(_standardWait);
+
                 addToCartButton = productItem.FindElement(AddToCartButton);
-                actions.MoveToElement(productItem).Click(addToCartButton).Build().Perform();
+            }
+
+            // Cuộn đến nút
+            ScrollToElement(addToCartButton);
+
+            // Thử ba phương pháp để click nút
+
+            // Phương pháp 1: Click thông thường
+            try
+            {
+                addToCartButton.Click();
+                Console.WriteLine("Clicked Add to Cart button normally");
+                return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Click failed for product {i + 1}: {ex.Message}");
-                ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", addToCartButton);
+                Console.WriteLine($"Normal click failed: {ex.Message}");
             }
 
-            var miniCart = _driver.FindElements(By.CssSelector(".minicart-wrapper.active"));
-            if (miniCart.Any() && miniCart.First().Displayed)
-            {
-                _driver.FindElement(By.CssSelector(".action.close")).Click();
-                _wait.Until(ExpectedConditions.InvisibilityOfElementLocated(By.CssSelector(".minicart-wrapper.active")));
-            }
-
+            // Phương pháp 2: Sử dụng Actions API
             try
             {
-                _wait.Until(d => d.FindElement(By.CssSelector(".message-success")).Displayed);
+                new Actions(_driver)
+                    .MoveToElement(addToCartButton)
+                    .Click()
+                    .Build()
+                    .Perform();
+                Console.WriteLine("Clicked Add to Cart button using Actions API");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Actions click failed: {ex.Message}");
+            }
+
+            // Phương pháp 3: Sử dụng JavaScript
+            try
+            {
+                ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", addToCartButton);
+                Console.WriteLine("Clicked Add to Cart button using JavaScript");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"JavaScript click failed: {ex.Message}");
+            }
+
+            // Nếu tất cả đều thất bại
+            Console.WriteLine("All click methods failed");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error clicking Add to Cart button: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Xác minh sản phẩm đã được thêm vào giỏ hàng
+    /// </summary>
+    /// <param name="beforeCount">Số lượng sản phẩm trong giỏ trước khi thêm</param>
+    /// <returns>true nếu thành công, false nếu thất bại</returns>
+    private bool VerifyProductAdded(int beforeCount)
+    {
+        try
+        {
+            // Phương pháp 1: Kiểm tra thông báo thành công
+            try
+            {
+                _wait.Until(d => d.FindElement(SuccessMessage).Displayed);
+                Console.WriteLine("Success message displayed");
+                return true;
             }
             catch (WebDriverTimeoutException)
             {
-                Console.WriteLine($"Success message not found for product {i + 1}, checking cart state.");
+                Console.WriteLine("Success message not found, checking cart count");
             }
 
-            _wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").Equals("complete"));
+            // Phương pháp 2: Kiểm tra số lượng trong giỏ hàng
+            int afterCount = GetCartCount();
+            if (afterCount > beforeCount)
+            {
+                Console.WriteLine($"Cart count increased from {beforeCount} to {afterCount}");
+                return true;
+            }
+
+            Console.WriteLine($"Cart count did not increase: before={beforeCount}, after={afterCount}");
+            return false;
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error verifying product added: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Lấy số lượng sản phẩm hiện tại trong giỏ hàng
+    /// </summary>
+    /// <returns>Số lượng sản phẩm trong giỏ hàng</returns>
+    private int GetCartCount()
+    {
+        try
+        {
+            var counterElements = _driver.FindElements(CartCounter);
+            if (counterElements.Any())
+            {
+                var counterText = counterElements.First().Text;
+                if (int.TryParse(counterText, out int count))
+                {
+                    return count;
+                }
+
+                // Nếu không phải số, cố gắng trích xuất số từ chuỗi
+                var digits = new string(counterText.Where(char.IsDigit).ToArray());
+                if (int.TryParse(digits, out count))
+                {
+                    return count;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting cart count: {ex.Message}");
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Kiểm tra xem có đang ở trang sản phẩm không
+    /// </summary>
+    /// <param name="expectedUrl">URL trang sản phẩm mong đợi</param>
+    /// <returns>true nếu đang ở trang sản phẩm, false nếu không</returns>
+    private bool IsOnProductPage(string expectedUrl)
+    {
+        string currentUrl = _driver.Url;
+        bool isOnProductPage = currentUrl.Contains(new Uri(expectedUrl).PathAndQuery);
+        return isOnProductPage;
+    }
+
+    /// <summary>
+    /// Đợi trang tải hoàn tất
+    /// </summary>
+    private void WaitForPageLoad()
+    {
+        _wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").Equals("complete"));
+    }
+
+    /// <summary>
+    /// Ghi log trạng thái trang hiện tại
+    /// </summary>
+    private void LogPageState()
+    {
+        Console.WriteLine($"Current URL: {_driver.Url}");
+        Console.WriteLine($"Page title: {_driver.Title}");
+    }
+
+    /// <summary>
+    /// Chụp ảnh màn hình để debug
+    /// </summary>
+    /// <param name="filename">Tên file ảnh</param>
+    private void TakeScreenshot(string filename)
+    {
+        try
+        {
+            var screenshot = ((ITakesScreenshot)_driver).GetScreenshot();
+            var fullFilename = $"{filename}_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+            screenshot.SaveAsFile(fullFilename);
+            Console.WriteLine($"Saved screenshot to {fullFilename}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error taking screenshot: {ex.Message}");
+        }
+    }
+    public void AddPantsToCart1(int quantity)
+    {
+        Console.WriteLine($"Starting AddPantsToCart method with quantity {quantity}...");
+
+        // Điều hướng trực tiếp đến trang quần
+        _driver.Navigate().GoToUrl(_productUrls["pants"]);
+        WaitForPageLoad();
+        Thread.Sleep(_longWait * 2);
+
+        // Chụp ảnh để debug
+        TakeScreenshot("pants_page_loaded");
+
+        // Đóng các popup/overlay
+        CloseAllOverlays();
+
+        // Tìm các liên kết sản phẩm thay vì container sản phẩm
+        var productLinks = _driver.FindElements(By.CssSelector(".product-item-link"));
+        Console.WriteLine($"Found {productLinks.Count} pants product links");
+
+        int successCount = 0;
+
+        for (int i = 0; i < quantity && i < productLinks.Count; i++)
+        {
+            try
+            {
+                // Lưu số lượng giỏ hàng trước khi thêm
+                int beforeCount = GetCartCount();
+
+                // Sử dụng JavaScript để click vào liên kết sản phẩm để mở trang chi tiết
+                var productLink = productLinks[i];
+                ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", productLink);
+                WaitForPageLoad();
+
+                // Trên trang chi tiết sản phẩm, chọn size và color
+                var sizeOptions = _driver.FindElements(By.CssSelector(".swatch-attribute.size .swatch-option"));
+                if (sizeOptions.Count > 0)
+                {
+                    ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", sizeOptions[0]);
+                    Thread.Sleep(_standardWait);
+                }
+                else
+                {
+                    Console.WriteLine("No size options found, skipping product");
+                    _driver.Navigate().GoToUrl(_productUrls["pants"]);
+                    WaitForPageLoad();
+                    productLinks = _driver.FindElements(By.CssSelector(".product-item-link"));
+                    continue;
+                }
+
+                var colorOptions = _driver.FindElements(By.CssSelector(".swatch-attribute.color .swatch-option"));
+                if (colorOptions.Count > 0)
+                {
+                    ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", colorOptions[0]);
+                    Thread.Sleep(_standardWait);
+                }
+
+                // Click nút Add to Cart
+                var addToCartBtn = _driver.FindElement(By.Id("product-addtocart-button"));
+                ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", addToCartBtn);
+
+                // Kiểm tra thành công
+                try
+                {
+                    _wait.Until(d => d.FindElements(SuccessMessage).Count > 0);
+                    successCount++;
+                    Console.WriteLine("Product added successfully");
+                }
+                catch (WebDriverTimeoutException)
+                {
+                    // Kiểm tra số lượng giỏ hàng
+                    int afterCount = GetCartCount();
+                    if (afterCount > beforeCount)
+                    {
+                        successCount++;
+                        Console.WriteLine($"Product added successfully (cart count: {beforeCount}->{afterCount})");
+                    }
+                }
+
+                // Quay lại trang danh sách sản phẩm
+                if (i < quantity - 1)
+                {
+                    _driver.Navigate().GoToUrl(_productUrls["pants"]);
+                    WaitForPageLoad();
+                    productLinks = _driver.FindElements(By.CssSelector(".product-item-link"));
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error adding pants product: {ex.Message}");
+                TakeScreenshot($"error_adding_pants_{i + 1}");
+                _driver.Navigate().GoToUrl(_productUrls["pants"]);
+                WaitForPageLoad();
+                productLinks = _driver.FindElements(By.CssSelector(".product-item-link"));
+            }
+        }
+
+        Console.WriteLine($"Successfully added {successCount} out of {quantity} pants to cart");
     }
 }

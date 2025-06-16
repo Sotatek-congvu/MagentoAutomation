@@ -41,7 +41,7 @@ public class CheckoutPage
         var items = _driver.FindElements(orderItems);
         var prices = _driver.FindElements(orderPrices);
 
-        Assert.That(items.Count, Is.GreaterThanOrEqualTo(2), "Expected at least 2 items in cart");
+        Assert.That(items.Count, Is.GreaterThanOrEqualTo(3), "Expected at least 3 items in cart");
 
 
 
@@ -99,7 +99,6 @@ public class CheckoutPage
 
         _wait.Until(d => ((IJavaScriptExecutor)_driver).ExecuteScript("return document.readyState").Equals("complete"));
 
-        // Xử lý modals một cách an toàn với try-catch
         try
         {
             var modals = _driver.FindElements(By.CssSelector(".modal-popup, .loading-mask, .minicart-wrapper.active"));
@@ -132,7 +131,6 @@ public class CheckoutPage
             Console.WriteLine($"Error handling modals: {ex.Message}");
         }
 
-        // Tìm kiếm và ẩn overlays bằng JavaScript một cách an toàn
         try
         {
             var overlaySelectors = new[] {
