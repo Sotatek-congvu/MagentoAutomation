@@ -32,36 +32,12 @@ jobs:
       - name: Build
         run: dotnet build --no-restore
 
-      - name: Install Google Chrome
-        run: |
-          sudo apt update -y
-          sudo apt install -y google-chrome-stable
-
-      - name: Install Chromedriver
-        run: |
-          # Lấy phiên bản Google Chrome đã cài đặt
-          CHROME_VERSION=$(google-chrome --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
-          echo "Detected Chrome Version: $CHROME_VERSION"
-
-          # Tải xuống ChromeDriver tương ứng
-          # Sử dụng LATEST_RELEASE_ (có dấu gạch dưới) để đảm bảo khớp phiên bản chính xác
-          # hoặc nếu không tìm thấy, có thể thử LATEST_RELEASE (không có dấu gạch dưới)
-          DRIVER_URL="https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION}/chromedriver_linux64.zip"
-          echo "Attempting to download ChromeDriver from: $DRIVER_URL"
-
-          # Tải xuống ChromeDriver
-          if ! wget -q -O chromedriver.zip "$DRIVER_URL"; then
-            echo "::warning::Could not download specific ChromeDriver version for $CHROME_VERSION. Trying latest stable version."
-            # Nếu không tìm thấy phiên bản chính xác, thử tải phiên bản stable mới nhất
-            wget -q -O chromedriver.zip https://chromedriver.storage.googleapis.com/LATEST_RELEASE/chromedriver_linux64.zip
-          fi
-
-          # Giải nén và di chuyển ChromeDriver
-          unzip -o chromedriver.zip # Sử dụng -o để ghi đè nếu đã tồn tại
-          sudo mv chromedriver /usr/local/bin/
-          sudo chmod +x /usr/local/bin/chromedriver
-          echo "ChromeDriver installed to /usr/local/bin/"
-          chromedriver --version # Kiểm tra để xác nhận cài đặt thành công
+      # Thay thế bước cài đặt Chrome và ChromeDriver thủ công bằng action này
+      - name: Install Chrome for Testing and ChromeDriver
+        uses: actions/setup-chrome-and-chromedriver@v1 # Sử dụng action này
+        with:
+          chrome-version: 'stable' # Cài đặt phiên bản Chrome stable mới nhất
+          chromedriver-version: 'stable' # Cài đặt ChromeDriver stable mới nhất
 
       - name: Run Tests
         run: |
