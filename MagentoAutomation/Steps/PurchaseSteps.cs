@@ -1,7 +1,6 @@
 ﻿using MagentoTests.Pages;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
-using SeleniumExtras.WaitHelpers;
 using TechTalk.SpecFlow;
 using WebDriverManager;
 using WebDriverManager.DriverConfigs.Impl;
@@ -57,10 +56,7 @@ public class PurchaseSteps
         _checkoutPage = new CheckoutPage(_driver);
         _orderPage = new OrderPage(_driver);
 
-        if (!Directory.Exists("Reports"))
-            Directory.CreateDirectory("Reports");
-
-        File.WriteAllText(ReportPath, $"Test Run: {DateTime.Now}\n\n");
+        
     }
 
     private void LogToFile(string message)

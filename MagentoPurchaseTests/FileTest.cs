@@ -61,7 +61,7 @@ public class MagentoPurchaseTests
     {
         
         _driver.Navigate().GoToUrl("https://magento.softwaretestingboard.com/customer/account/login/");
-        _loginPage.Login("lhl90113@jioso.com", "lhl90113@jioso");
+        _loginPage.Login("kmw58999@jioso.com", "kmw58999@jioso");
 
         
         _driver.Navigate().GoToUrl("https://magento.softwaretestingboard.com/men/tops-men/jackets-men.html");

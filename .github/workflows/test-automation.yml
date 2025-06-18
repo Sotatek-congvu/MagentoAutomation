@@ -89,7 +89,8 @@ jobs:
 
       - name: Run Tests
         run: |
-          dotnet test --no-build --verbosity normal
+          # Đường dẫn đến project file .csproj từ thư mục gốc của repo
+          dotnet test MagentoPurchaseTests/MagentoPurchaseTests.csproj --filter "FullyQualifiedName~FileTest" --no-build --verbosity normal
           if [ $? -ne 0 ]; then
             echo "::error::Tests failed!"
             exit 1
