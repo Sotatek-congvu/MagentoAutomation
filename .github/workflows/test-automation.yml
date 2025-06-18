@@ -2,9 +2,9 @@ name: Magento Test Automation
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master, main,newnhanh ]
   pull_request:
-    branches: [ master, main ]
+    branches: [ master, main,newnhanh]
   workflow_dispatch:
 
 jobs:
