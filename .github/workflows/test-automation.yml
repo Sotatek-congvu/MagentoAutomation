@@ -32,12 +32,46 @@ jobs:
       - name: Build
         run: dotnet build --no-restore
 
-      # Thay thế bước cài đặt Chrome và ChromeDriver thủ công bằng action này
-      - name: Install Chrome for Testing and ChromeDriver
-        uses: actions/setup-chrome-and-chromedriver@v1 # Sử dụng action này
-        with:
-          chrome-version: 'stable' # Cài đặt phiên bản Chrome stable mới nhất
-          chromedriver-version: 'stable' # Cài đặt ChromeDriver stable mới nhất
+      - name: Install Google Chrome (Stable)
+        run: |
+          sudo apt update -y
+          sudo apt install -y google-chrome-stable
+          google-chrome --version # Kiểm tra để đảm bảo Chrome đã được cài đặt
+
+      - name: Install Chromedriver
+        run: |
+          # Cần cài đặt jq để phân tích JSON nếu chưa có
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
+          # Lấy phiên bản Google Chrome đã cài đặt
+          # Chỉ lấy phần số chính (major version)
+          CHROME_MAJOR_VERSION=$(google-chrome --version | grep -oE 'Google Chrome ([0-9]+)\.' | cut -d' ' -f3 | tr -d '.')
+          echo "Detected Chrome Major Version: $CHROME_MAJOR_VERSION"
+
+          # Tìm URL ChromeDriver tương ứng từ Google for Testing (CfT) API
+          # Truy vấn API để lấy thông tin phiên bản ChromeDriver mới nhất cho phiên bản Chrome chính
+          CHROMEDRIVER_INFO=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json" | jq -r ".versions[] | select(.version | startswith(\"$CHROME_MAJOR_VERSION.\")) | .downloads.chromedriver[] | select(.platform == \"linux64\") | .url")
+
+          if [ -z "$CHROMEDRIVER_INFO" ]; then
+            echo "::warning::Could not find specific ChromeDriver download URL for Chrome version $CHROME_MAJOR_VERSION. Trying latest stable version."
+            # Fallback: Tải phiên bản ChromeDriver stable mới nhất nếu không tìm thấy phiên bản cụ thể
+            CHROMEDRIVER_INFO=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json" | jq -r ".versions[] | select(.channel == \"Stable\") | .downloads.chromedriver[] | select(.platform == \"linux64\") | .url")
+            if [ -z "$CHROMEDRIVER_INFO" ]; then
+              echo "::error::Could not find any stable ChromeDriver download URL. Exiting."
+              exit 1
+            fi
+          fi
+
+          echo "Attempting to download ChromeDriver from: $CHROMEDRIVER_INFO"
+          wget -q -O chromedriver.zip "$CHROMEDRIVER_INFO"
+
+          # Giải nén và di chuyển ChromeDriver
+          unzip -o chromedriver.zip
+          sudo mv chromedriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/chromedriver
+          echo "ChromeDriver installed to /usr/local/bin/"
+          chromedriver --version # Xác nhận cài đặt thành công
 
       - name: Run Tests
         run: |
