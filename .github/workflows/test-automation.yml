@@ -49,22 +49,27 @@ jobs:
           echo "Detected Chrome Major Version: $CHROME_MAJOR_VERSION"
 
           # Tải JSON chứa thông tin các phiên bản Chrome for Testing
-          CURL_OUTPUT=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json")
-          # In ra toàn bộ output từ curl để gỡ lỗi nếu cần
-          echo "Full CfT API Response (for debugging):"
-          echo "$CURL_OUTPUT" | head -n 50 # Chỉ in 50 dòng đầu tiên để tránh quá dài
+          # Dùng -fL để theo dõi các chuyển hướng nếu có
+          CURL_OUTPUT=$(curl -s -fL "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json")
+
+          # In ra toàn bộ output từ curl để gỡ lỗi nếu cần (CHỈ KHI CẦN GỠ LỖI NẶNG)
+          # Nếu workflow chạy thành công, bạn có thể bỏ comment dòng này để tránh log quá dài
+          # echo "Full CfT API Response (for debugging):"
+          # echo "$CURL_OUTPUT"
 
           # Tìm URL ChromeDriver tương ứng cho phiên bản Chrome đã phát hiện
+          # Sử dụng jq với kiểm tra null an toàn hơn (.? thay vì .)
           CHROMEDRIVER_INFO=$(echo "$CURL_OUTPUT" | jq -r \
-            ".versions[] | select(.version | startswith(\"$CHROME_MAJOR_VERSION.\")) | .downloads.chromedriver[] | select(.platform == \"linux64\") | .url")
+            ".versions[]? | select(.version | startswith(\"$CHROME_MAJOR_VERSION.\")) | .downloads.chromedriver[]? | select(.platform == \"linux64\") | .url")
 
-          if [ -z "$CHROMEDRIVER_INFO" ] || [ "$CHROMEDRIVER_INFO" == "null" ]; then # Kiểm tra cả rỗng và 'null' string
+          # Nếu không tìm thấy phiên bản cụ thể, thử tải phiên bản Stable mới nhất
+          if [ -z "$CHROMEDRIVER_INFO" ] || [ "$CHROMEDRIVER_INFO" == "null" ]; then
             echo "::warning::Could not find specific ChromeDriver download URL for Chrome version $CHROME_MAJOR_VERSION. Trying latest Stable version."
-            # Fallback: Tải phiên bản ChromeDriver stable mới nhất nếu không tìm thấy phiên bản cụ thể
+            
             CHROMEDRIVER_INFO=$(echo "$CURL_OUTPUT" | jq -r \
-              ".versions[] | select(.channel == \"Stable\") | .downloads.chromedriver[] | select(.platform == \"linux64\") | .url")
+              ".channels.Stable.downloads.chromedriver[]? | select(.platform == \"linux64\") | .url")
 
-            if [ -z "$CHROMEDRIVER_INFO" ] || [ "$CHROMEDRIVER_INFO" == "null" ]; then # Kiểm tra lại cho fallback
+            if [ -z "$CHROMEDRIVER_INFO" ] || [ "$CHROMEDRIVER_INFO" == "null" ]; then
               echo "::error::Could not find any stable ChromeDriver download URL. Exiting."
               exit 1
             fi
