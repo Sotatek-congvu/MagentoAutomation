@@ -49,16 +49,9 @@ jobs:
           echo "Detected Chrome Major Version: $CHROME_MAJOR_VERSION"
 
           # Tải JSON chứa thông tin các phiên bản Chrome for Testing
-          # Dùng -fL để theo dõi các chuyển hướng nếu có
           CURL_OUTPUT=$(curl -s -fL "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json")
 
-          # In ra toàn bộ output từ curl để gỡ lỗi nếu cần (CHỈ KHI CẦN GỠ LỖI NẶNG)
-          # Nếu workflow chạy thành công, bạn có thể bỏ comment dòng này để tránh log quá dài
-          # echo "Full CfT API Response (for debugging):"
-          # echo "$CURL_OUTPUT"
-
           # Tìm URL ChromeDriver tương ứng cho phiên bản Chrome đã phát hiện
-          # Sử dụng jq với kiểm tra null an toàn hơn (.? thay vì .)
           CHROMEDRIVER_INFO=$(echo "$CURL_OUTPUT" | jq -r \
             ".versions[]? | select(.version | startswith(\"$CHROME_MAJOR_VERSION.\")) | .downloads.chromedriver[]? | select(.platform == \"linux64\") | .url")
 
@@ -78,9 +71,18 @@ jobs:
           echo "Attempting to download ChromeDriver from: $CHROMEDRIVER_INFO"
           wget -q -O chromedriver.zip "$CHROMEDRIVER_INFO"
 
-          # Giải nén và di chuyển ChromeDriver
+          # Giải nén ChromeDriver
           unzip -o chromedriver.zip
-          sudo mv chromedriver /usr/local/bin/
+
+          # DI CHUYỂN CHROMEDRIVER TỪ THƯ MỤC CHÍNH XÁC
+          # Tên thư mục con thường là chromedriver-linux64 hoặc chrome-linux64
+          # Chúng ta sẽ di chuyển tệp thực thi nằm bên trong thư mục đó
+          # Cú pháp này sẽ tìm tệp 'chromedriver' bên trong bất kỳ thư mục con nào
+          find . -name "chromedriver" -exec sudo mv {} /usr/local/bin/ \;
+          # Hoặc nếu bạn muốn rõ ràng hơn và biết tên thư mục là chromedriver-linux64
+          # sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
+
+
           sudo chmod +x /usr/local/bin/chromedriver
           echo "ChromeDriver installed to /usr/local/bin/"
           chromedriver --version # Xác nhận cài đặt thành công
