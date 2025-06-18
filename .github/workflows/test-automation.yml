@@ -44,20 +44,27 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y jq
 
-          # Lấy phiên bản Google Chrome đã cài đặt
-          # Chỉ lấy phần số chính (major version)
+          # Lấy phiên bản Google Chrome đã cài đặt (chỉ major version)
           CHROME_MAJOR_VERSION=$(google-chrome --version | grep -oE 'Google Chrome ([0-9]+)\.' | cut -d' ' -f3 | tr -d '.')
           echo "Detected Chrome Major Version: $CHROME_MAJOR_VERSION"
 
-          # Tìm URL ChromeDriver tương ứng từ Google for Testing (CfT) API
-          # Truy vấn API để lấy thông tin phiên bản ChromeDriver mới nhất cho phiên bản Chrome chính
-          CHROMEDRIVER_INFO=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json" | jq -r ".versions[] | select(.version | startswith(\"$CHROME_MAJOR_VERSION.\")) | .downloads.chromedriver[] | select(.platform == \"linux64\") | .url")
+          # Tải JSON chứa thông tin các phiên bản Chrome for Testing
+          CURL_OUTPUT=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json")
+          # In ra toàn bộ output từ curl để gỡ lỗi nếu cần
+          echo "Full CfT API Response (for debugging):"
+          echo "$CURL_OUTPUT" | head -n 50 # Chỉ in 50 dòng đầu tiên để tránh quá dài
 
-          if [ -z "$CHROMEDRIVER_INFO" ]; then
-            echo "::warning::Could not find specific ChromeDriver download URL for Chrome version $CHROME_MAJOR_VERSION. Trying latest stable version."
+          # Tìm URL ChromeDriver tương ứng cho phiên bản Chrome đã phát hiện
+          CHROMEDRIVER_INFO=$(echo "$CURL_OUTPUT" | jq -r \
+            ".versions[] | select(.version | startswith(\"$CHROME_MAJOR_VERSION.\")) | .downloads.chromedriver[] | select(.platform == \"linux64\") | .url")
+
+          if [ -z "$CHROMEDRIVER_INFO" ] || [ "$CHROMEDRIVER_INFO" == "null" ]; then # Kiểm tra cả rỗng và 'null' string
+            echo "::warning::Could not find specific ChromeDriver download URL for Chrome version $CHROME_MAJOR_VERSION. Trying latest Stable version."
             # Fallback: Tải phiên bản ChromeDriver stable mới nhất nếu không tìm thấy phiên bản cụ thể
-            CHROMEDRIVER_INFO=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json" | jq -r ".versions[] | select(.channel == \"Stable\") | .downloads.chromedriver[] | select(.platform == \"linux64\") | .url")
-            if [ -z "$CHROMEDRIVER_INFO" ]; then
+            CHROMEDRIVER_INFO=$(echo "$CURL_OUTPUT" | jq -r \
+              ".versions[] | select(.channel == \"Stable\") | .downloads.chromedriver[] | select(.platform == \"linux64\") | .url")
+
+            if [ -z "$CHROMEDRIVER_INFO" ] || [ "$CHROMEDRIVER_INFO" == "null" ]; then # Kiểm tra lại cho fallback
               echo "::error::Could not find any stable ChromeDriver download URL. Exiting."
               exit 1
             fi
