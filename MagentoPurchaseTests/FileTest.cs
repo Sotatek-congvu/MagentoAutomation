@@ -1,6 +1,9 @@
 ﻿using MagentoTests.Pages;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using WebDriverManager;
+using WebDriverManager.DriverConfigs.Impl;
+using WebDriverManager.Helpers;
 
 [TestFixture]
 public class MagentoPurchaseTests
@@ -14,14 +17,32 @@ public class MagentoPurchaseTests
     [OneTimeSetUp]
     public void InitializeTest()
     {
-        _driver = new ChromeDriver();
+        new DriverManager().SetUpDriver(new ChromeConfig(), VersionResolveStrategy.MatchingBrowser);
+
+        var chromeOptions = new ChromeOptions();
+
+        bool isHeadless = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HEADLESS")) &&
+                          Environment.GetEnvironmentVariable("HEADLESS").ToLower() == "true";
+
+        if (isHeadless)
+        {
+            chromeOptions.AddArgument("--headless");
+            chromeOptions.AddArgument("--no-sandbox");
+            chromeOptions.AddArgument("--disable-dev-shm-usage");
+        }
+
+        chromeOptions.AddArgument("--start-maximized");
+        chromeOptions.AddArgument("--disable-extensions");
+        chromeOptions.AddArgument("--disable-popup-blocking");
+        chromeOptions.AddArgument("--disable-infobars");
+
+        _driver = new ChromeDriver(chromeOptions);
 
         _loginPage = new LoginPage(_driver);
         _productPage = new ProductPage(_driver);
         _cartPage = new CartPage(_driver);
         _checkoutPage = new CheckoutPage(_driver);
-
-        _driver.Navigate().GoToUrl("https://magento.softwaretestingboard.com/");
+        
     }
 
     [OneTimeTearDown]
