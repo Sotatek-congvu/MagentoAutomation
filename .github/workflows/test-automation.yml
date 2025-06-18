@@ -11,53 +11,39 @@ on:
       - master
       - main
       - newnhanh
-  workflow_dispatch: # Cho phép chạy workflow thủ công
+  workflow_dispatch:
 
 jobs:
   test:
     name: Run UI Tests
-    runs-on: ubuntu-latest # Chạy trên môi trường Ubuntu mới nhất
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3 # Tải mã nguồn về runner
+      - uses: actions/checkout@v3
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v3 # Cài đặt .NET SDK
+        uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore # Khôi phục các gói NuGet cho dự án .NET
+        run: dotnet restore
 
       - name: Build
-        run: dotnet build --no-restore # Biên dịch dự án .NET
+        run: dotnet build --no-restore
 
-      # Bước cải tiến để cài đặt Chrome và ChromeDriver
       - name: Install Google Chrome and ChromeDriver
-        uses: webdriverio/setup-chromedriver@v2 # Sử dụng action cộng đồng để cài đặt ChromeDriver
+        uses: webdriverio/setup-chromedriver@v2
         with:
-          chromedriver-version: 'latest' # Tự động tìm phiên bản ChromeDriver mới nhất tương thích
-          chrome-version: 'latest' # Tự động cài đặt Chrome phiên bản mới nhất
-
-      # Cách cài đặt Chrome thủ công (Nếu bạn muốn kiểm soát cụ thể phiên bản Chrome hoặc không muốn dùng action trên)
-      # Lưu ý: Nếu dùng action trên thì không cần bước này. Nếu bạn bỏ comment bước này, hãy đảm bảo ChromeDriver cũng được cài đặt thủ công.
-      # - name: Install Chrome (Alternative, if not using setup-chromedriver action's chrome-version)
-      #   run: |
-      #     sudo apt update
-      #     wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-      #     sudo apt install -y ./google-chrome-stable_current_amd64.deb
-      #     rm google-chrome-stable_current_amd64.deb
-      #     # Sau khi cài Chrome thủ công, bạn sẽ cần một bước riêng để cài ChromeDriver thủ công
-      #     # (như script bạn đã có, nhưng hãy đảm bảo lệnh google-chrome --version hoạt động)
+          chromedriver-version: 'latest'
+          chrome-version: 'latest'
 
       - name: Run Tests
         run: |
           dotnet test --no-build --verbosity normal
-          # Kiểm tra mã thoát của lệnh dotnet test
           if [ $? -ne 0 ]; then
-            echo "::error::Tests failed!" # Ghi log lỗi rõ ràng hơn trong GitHub Actions
-            exit 1 # Thoát với mã lỗi nếu test thất bại
+            echo "::error::Tests failed!"
+            exit 1
           fi
         env:
-          HEADLESS: true # Đặt biến môi trường HEADLESS thành true để chạy trình duyệt ở chế độ không giao diện
+          HEADLESS: true
