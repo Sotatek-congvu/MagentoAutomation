@@ -4,7 +4,7 @@ using OpenQA.Selenium.Chrome;
 using WebDriverManager;
 using WebDriverManager.DriverConfigs.Impl;
 using WebDriverManager.Helpers;
-
+namespace MagentoPurchaseTests;
 [TestFixture]
 public class MagentoPurchaseTests
 {
