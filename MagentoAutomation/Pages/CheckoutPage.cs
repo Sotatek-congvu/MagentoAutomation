@@ -192,7 +192,6 @@ public class CheckoutPage
             Console.WriteLine($"Error selecting payment method: {ex.Message}");
         }
 
-        // Sửa phần này để xử lý vấn đề stale element khi chuyển trang
         try
         {
             bool clickSuccess = (bool)((IJavaScriptExecutor)_driver).ExecuteScript(@"
@@ -221,18 +220,15 @@ public class CheckoutPage
             {
                 Console.WriteLine("JavaScript click failed, trying WebDriver click");
 
-                // Tìm nút đặt hàng và click bằng WebDriver
                 var orderButton = _driver.FindElement(placeOrderButton);
                 _wait.Until(ExpectedConditions.ElementToBeClickable(placeOrderButton));
                 orderButton.Click();
             }
 
-            // Chụp ảnh màn hình để theo dõi
             var attemptScreenshot = ((ITakesScreenshot)_driver).GetScreenshot();
             attemptScreenshot.SaveAsFile("place-order-attempt.png");
 
-            // Chờ chuyển hướng đến trang thành công
-            // Sử dụng chờ với timeout ngắn và thử lại nếu cần
+            
             bool redirectSuccess = false;
             int attempts = 0;
             while (!redirectSuccess && attempts < 3)
